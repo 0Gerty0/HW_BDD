@@ -1,4 +1,4 @@
-package ru.netology.data;
+package ru.netology.helpers;
 
 import lombok.Value;
 
@@ -37,6 +37,10 @@ public class DataHelper {
 
         public String getLastFourDigits() {
             return fullCardNumber.substring(fullCardNumber.length() - 4);
+        }
+
+        public String getCardNumber() { // Returns the full card number
+            return fullCardNumber;
         }
     }
 }
