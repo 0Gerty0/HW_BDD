@@ -1,56 +1,67 @@
 package ru.netology;
 
-import com.codeborne.selenide.Configuration;
-import com.codeborne.selenide.Selenide;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import ru.netology.helpers.DataHelper;
+import ru.netology.data.DataHelper;
 import ru.netology.pages.DashboardPage;
 import ru.netology.pages.LoginPage;
 
+import static com.codeborne.selenide.Selenide.open;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static ru.netology.data.DataHelper.*;
 
-public class MoneyTransferTest extends BaseTest {
-    private DashboardPage dashboardPage;
-
-    @BeforeAll
-    static void setUpAll() {
-        // Дополнительный таймаут (уже задан в SelenideConfig)
-        Configuration.timeout = 10000;
-    }
+public class MoneyTransferTest {
+    DashboardPage dashboardPage;
+    DataHelper.CardInfo firstCardInfo;
+    DataHelper.CardInfo secondCardInfo;
+    int firstCardBalance;
+    int secondCardBalance;
 
     @BeforeEach
-    void setUp() {
-        Selenide.open("http://localhost:9999"); // Открываем приложение
-        var loginPage = new LoginPage();
-        var authInfo = DataHelper.getAuthInfo();
-        var verificationPage = loginPage.validLogin(authInfo.getLogin(), authInfo.getPassword());
-        var verificationCode = DataHelper.getVerificationCode().getCode();
+    void setup() {
+        var loginPage = open("http://localhost:9999", LoginPage.class);
+        var authInfo = getAuthInfo();
+        var verificationPage = loginPage.validLogin(authInfo);
+        var verificationCode = getVerificationCode();
         dashboardPage = verificationPage.validVerify(verificationCode);
+
+        firstCardInfo = getFirstCardInfo();
+        secondCardInfo = getSecondCardInfo();
+        firstCardBalance = dashboardPage.getCardBalance(firstCardInfo);
+        secondCardBalance = dashboardPage.getCardBalance(secondCardInfo);
     }
 
     @Test
-    void shouldTransferMoneyBetweenOwnCards() {
-        // Карта, куда зачисляются деньги
-        var firstCard = DataHelper.getFirstCardInfo();   // "5559 0000 0000 0001"
-        // Карта, с которой списываются деньги
-        var secondCard = DataHelper.getSecondCardInfo();   // "5559 0000 0000 0002"
+    void shouldTransferFromFirstToSecond() {
+        var amount = generateValidAmount(firstCardBalance);
+        var expectedBalanceFirstCard = firstCardBalance - amount;
+        var expectedBalanceSecondCard = secondCardBalance + amount;
 
-        // Используем сумму 500, чтобы избежать ошибки (если перевод 5000 вызывает отказ)
-        int amount = 500;
+        var transferPage = dashboardPage.selectCardToTransfer(secondCardInfo);
+        dashboardPage = transferPage.makeValidTransfer(String.valueOf(amount), firstCardInfo);
+        dashboardPage.reloadDashboardPage();
 
-        int initialBalanceFirstCard = dashboardPage.getBalance(firstCard.getLastFourDigits());
-        int initialBalanceSecondCard = dashboardPage.getBalance(secondCard.getLastFourDigits());
+        var actualBalanceFirstCard = dashboardPage.getCardBalance(firstCardInfo);
+        var actualBalanceSecondCard = dashboardPage.getCardBalance(secondCardInfo);
 
-        // Выполняем перевод: нажимаем на "Пополнить" у карты назначения (первая карта)
-        var transferPage = dashboardPage.transferToCard(firstCard.getLastFourDigits());
-        // Переводим сумму с карты-источника (вторая карта)
-        dashboardPage = transferPage.makeTransfer(String.valueOf(amount), secondCard.getCardNumber());
+        assertAll(
+                () -> assertEquals(expectedBalanceFirstCard, actualBalanceFirstCard),
+                () -> assertEquals(expectedBalanceSecondCard, actualBalanceSecondCard)
+        );
+    }
 
-        assertEquals(initialBalanceFirstCard + amount, dashboardPage.getBalance(firstCard.getLastFourDigits()),
-                "Balance of the first card should increase by the transfer amount");
-        assertEquals(initialBalanceSecondCard - amount, dashboardPage.getBalance(secondCard.getLastFourDigits()),
-                "Balance of the second card should decrease by the transfer amount");
+    @Test
+    void shouldGetErrorMessageIfAmountMoreBalance() {
+        var amount = generateInvalidAmount(secondCardBalance);
+        var transferPage = dashboardPage.selectCardToTransfer(firstCardInfo);
+        transferPage.makeTransfer(String.valueOf(amount), secondCardInfo);
+
+        assertAll(
+                () -> transferPage.findErrorMessage("Выполнена попытка перевода суммы, превышающей остаток на карте"),
+                () -> dashboardPage.reloadDashboardPage(),
+                () -> assertEquals(firstCardBalance, dashboardPage.getCardBalance(firstCardInfo)),
+                () -> assertEquals(secondCardBalance, dashboardPage.getCardBalance(secondCardInfo))
+        );
     }
 }

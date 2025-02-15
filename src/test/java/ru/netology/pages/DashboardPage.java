@@ -1,64 +1,48 @@
 package ru.netology.pages;
 
+import com.codeborne.selenide.Condition;
 import com.codeborne.selenide.ElementsCollection;
 import com.codeborne.selenide.SelenideElement;
-import java.time.Duration;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import static com.codeborne.selenide.Condition.*;
+import ru.netology.data.DataHelper;
+
+import static com.codeborne.selenide.Condition.visible;
 import static com.codeborne.selenide.Selenide.*;
-import static com.codeborne.selenide.CollectionCondition.sizeGreaterThan;
 
 public class DashboardPage {
+    private final String balanceStart = "Баланс: ";
+    private final String balanceFinish = " р.";
+    private final SelenideElement heading = $("[data-test-id=dashboard]");
+    private final ElementsCollection cards = $$(".list__item div");
+    private final SelenideElement reloadButton = $("[data-test-id=action-reload]");
 
-    // Собираем список карточек
-    private ElementsCollection cards = $$("ul.list li")
-            .shouldHave(sizeGreaterThan(0), Duration.ofSeconds(10));
-
-    /**
-     * Извлекаем баланс карты, у которой в тексте есть указанные последние 4 цифры.
-     * Ожидаем текст вида "**** **** **** 0001, баланс: 10500 р."
-     */
-    public int getBalance(String lastFourDigits) {
-        SelenideElement cardElement = cards.findBy(text(lastFourDigits))
-                .shouldBe(visible, Duration.ofSeconds(10));
-        System.out.println("Found card with last digits: " + lastFourDigits);
-        String cardText = cardElement.getText();
-        Pattern pattern = Pattern.compile("баланс:\\s*(\\d+)");
-        Matcher matcher = pattern.matcher(cardText);
-        if (matcher.find()) {
-            return Integer.parseInt(matcher.group(1));
-        } else {
-            throw new IllegalStateException("Unable to find balance in text: " + cardText);
-        }
+    public DashboardPage() {
+        heading.shouldBe(visible);
     }
 
-    /**
-     * Переходим к экрану пополнения карты, у которой в тексте есть указанные последние 4 цифры.
-     * На странице ищется кнопка с data-test-id='action-deposit'.
-     */
-    public TransferPage transferToCard(String lastFourDigits) {
-        // Ищем нужную карточку по последним 4 цифрам (например, "0002")
-        SelenideElement cardElement = cards.findBy(text(lastFourDigits))
-                .shouldBe(visible, Duration.ofSeconds(10));
-        System.out.println("Located card: " + lastFourDigits);
+    public int getCardBalance(DataHelper.CardInfo cardInfo) {
+        var text = cards.findBy(Condition.attribute("data-test-id", cardInfo.getTestId())).getText();
+        return extractBalance(text);
+    }
 
-        // Находим кнопку "Пополнить" внутри этой карточки
-        SelenideElement depositButton = cardElement.$("button[data-test-id='action-deposit']")
-                .shouldBe(visible, Duration.ofSeconds(10));
-        System.out.println("Deposit button found, scrolling into view...");
+    public int getCardBalance(int index) {
+        var text = cards.get(index).getText();
+        return extractBalance(text);
+    }
 
-        depositButton.scrollIntoView(true);
-        // Выполняем клик через JavaScript, чтобы избежать возможных проблем с обычным кликом
-        executeJavaScript("arguments[0].click();", depositButton);
-        System.out.println("Deposit button clicked, waiting for transfer page...");
+    public TransferPage selectCardToTransfer(DataHelper.CardInfo cardInfo) {
+        cards.findBy(Condition.attribute("data-test-id", cardInfo.getTestId())).$("button").click();
+        return new TransferPage();
+    }
 
-        // Добавляем небольшую задержку для перехода (можно корректировать по необходимости)
-        sleep(2000);
+    public void reloadDashboardPage() {
+        reloadButton.click();
+        heading.shouldBe(visible);
+    }
 
-        // Ожидаем заголовок "Пополнение карты"
-        $("h1").shouldHave(text("Пополнение карты"), Duration.ofSeconds(10));
-        System.out.println("Navigated to transfer page.");
-        return page(TransferPage.class);
+    private int extractBalance(String text) {
+        var start = text.indexOf(balanceStart);
+        var finish = text.indexOf(balanceFinish);
+        var value = text.substring(start + balanceStart.length(), finish);
+        return Integer.parseInt(value);
     }
 }
