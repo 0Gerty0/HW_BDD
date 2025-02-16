@@ -16,7 +16,9 @@ dependencies {
     testImplementation 'org.projectlombok:lombok:1.18.28'
     testAnnotationProcessor 'org.projectlombok:lombok:1.18.28'  // Исправленная версия
 }
-
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
 
     test {
         useJUnitPlatform()
